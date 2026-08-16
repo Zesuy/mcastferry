@@ -133,3 +133,22 @@ func TestServeConnRejectsBeforeStreaming(t *testing.T) {
 		<-done
 	}
 }
+
+func TestStatusIsOrdinaryBoundedResponse(t *testing.T) {
+	relay, _ := testServer(t)
+	serverConn, clientConn := connectionPair()
+	done := make(chan error, 1)
+	go func() { done <- relay.ServeConn(serverConn) }()
+	_, _ = io.WriteString(clientConn, "GET /status HTTP/1.1\r\nHost: router\r\n\r\n")
+	response, err := io.ReadAll(clientConn)
+	_ = clientConn.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(response), "Content-Type: application/json") || !strings.HasSuffix(string(response), "{\"sessions\":[]}") {
+		t.Fatalf("unexpected status response %q", response)
+	}
+}

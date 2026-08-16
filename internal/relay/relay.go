@@ -4,6 +4,7 @@ package relay
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -51,6 +52,13 @@ func (s *Server) ServeConn(conn net.Conn) error {
 		writeError(conn, request.version, 403, "Forbidden")
 		return errors.New("client is not allowed")
 	}
+	if request.path == "/status" {
+		if request.method != "GET" {
+			writeError(conn, request.version, 405, "Method Not Allowed")
+			return errors.New("status route requires GET")
+		}
+		return writeStatus(conn, request.version, s.Manager.Snapshots())
+	}
 	if request.method != "GET" {
 		writeError(conn, request.version, 405, "Method Not Allowed")
 		return errors.New("live route requires GET")
@@ -84,6 +92,59 @@ func (s *Server) ServeConn(conn net.Conn) error {
 		version = "dev"
 	}
 	return httpstream.Serve(context.Background(), conn, request.version, "mcastferry/"+version, client, s.Config.ClientWriteTimeout)
+}
+
+type statusResponse struct {
+	Sessions []statusSession `json:"sessions"`
+}
+
+type statusSession struct {
+	InterfaceIndex int    `json:"interface_index"`
+	Group          string `json:"group"`
+	Port           uint16 `json:"port"`
+	Mode           string `json:"mode"`
+	Clients        int    `json:"clients"`
+	Packets        uint64 `json:"packets"`
+	Bytes          uint64 `json:"bytes"`
+	LastPacket     string `json:"last_packet,omitempty"`
+	InvalidRTP     uint64 `json:"rtp_invalid"`
+	SequenceGaps   uint64 `json:"rtp_sequence_gaps"`
+	SSRCChanges    uint64 `json:"rtp_ssrc_changes"`
+}
+
+func writeStatus(conn net.Conn, version string, snapshots []session.Snapshot) error {
+	response := statusResponse{Sessions: make([]statusSession, 0, len(snapshots))}
+	for _, snapshot := range snapshots {
+		lastPacket := ""
+		if !snapshot.LastPacket.IsZero() {
+			lastPacket = snapshot.LastPacket.UTC().Format(time.RFC3339Nano)
+		}
+		response.Sessions = append(response.Sessions, statusSession{
+			InterfaceIndex: snapshot.Key.IfIndex, Group: snapshot.Key.Group.String(), Port: snapshot.Key.Port,
+			Mode: snapshot.Mode.String(), Clients: snapshot.Clients, Packets: snapshot.Packets, Bytes: snapshot.Bytes,
+			LastPacket: lastPacket, InvalidRTP: snapshot.InvalidRTP,
+			SequenceGaps: snapshot.SequenceGaps, SSRCChanges: snapshot.SSRCChanges,
+		})
+	}
+	body, err := json.Marshal(response)
+	if err != nil {
+		return err
+	}
+	header := fmt.Sprintf("%s 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", version, len(body))
+	if _, err := io.WriteString(conn, header); err != nil {
+		return err
+	}
+	for len(body) > 0 {
+		n, writeErr := conn.Write(body)
+		if writeErr != nil {
+			return writeErr
+		}
+		if n <= 0 {
+			return io.ErrShortWrite
+		}
+		body = body[n:]
+	}
+	return nil
 }
 
 type request struct {
