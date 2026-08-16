@@ -24,4 +24,17 @@ func TestHelp(t *testing.T) {
 	if !strings.Contains(stderr.String(), "Usage: mcastferry") {
 		t.Fatalf("help missing usage: %q", stderr.String())
 	}
+	if !strings.Contains(stderr.String(), "-http-listen") {
+		t.Fatalf("help missing runtime flags: %q", stderr.String())
+	}
+}
+
+func TestMissingRequiredConfiguration(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if code := run(&stdout, &stderr, nil); code != 2 {
+		t.Fatalf("run returned %d", code)
+	}
+	if !strings.Contains(stderr.String(), "configuration error") {
+		t.Fatalf("missing configuration error: %q", stderr.String())
+	}
 }
