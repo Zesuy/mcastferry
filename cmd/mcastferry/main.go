@@ -15,6 +15,7 @@ import (
 
 	"github.com/zesuy/mcastferry/internal/config"
 	"github.com/zesuy/mcastferry/internal/mcast"
+	"github.com/zesuy/mcastferry/internal/playlist"
 	"github.com/zesuy/mcastferry/internal/relay"
 	"github.com/zesuy/mcastferry/internal/session"
 )
@@ -83,6 +84,17 @@ func (s multicastSource) Read(ctx context.Context) ([]byte, error) {
 func (s multicastSource) Close() error { return s.receiver.Close() }
 
 func serve(ctx context.Context, cfg config.Config) error {
+	var playlistHandler *playlist.Handler
+	if cfg.PlaylistPath != "" {
+		var err error
+		playlistHandler, err = playlist.New(playlist.Config{
+			Path: cfg.PlaylistPath, Route: cfg.PlaylistRoute,
+			MaxBytes: cfg.PlaylistMaxBytes, ContentType: "application/vnd.apple.mpegurl",
+		})
+		if err != nil {
+			return fmt.Errorf("configure playlist: %w", err)
+		}
+	}
 	manager, err := session.NewManager(func(key session.Key) (session.Source, error) {
 		receiver, openErr := mcast.Open(mcast.Config{
 			Group: key.Group, Port: key.Port, IfIndex: key.IfIndex, ReceiveBuffer: 4 << 20,
@@ -108,7 +120,7 @@ func serve(ctx context.Context, cfg config.Config) error {
 	defer listener.Close()
 	slog.Info("server_start", "listen", listener.Addr(), "multicast_input", cfg.InputDevice, "ifindex", cfg.InputIfIndex)
 
-	relayServer := &relay.Server{Config: cfg, Manager: manager, Version: version}
+	relayServer := &relay.Server{Config: cfg, Manager: manager, Version: version, Playlist: playlistHandler}
 	var connections sync.WaitGroup
 	shutdownDone := make(chan struct{})
 	go func() {

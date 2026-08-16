@@ -15,6 +15,7 @@ import (
 
 	"github.com/zesuy/mcastferry/internal/config"
 	"github.com/zesuy/mcastferry/internal/httpstream"
+	"github.com/zesuy/mcastferry/internal/playlist"
 	"github.com/zesuy/mcastferry/internal/rtp"
 	"github.com/zesuy/mcastferry/internal/session"
 	"github.com/zesuy/mcastferry/internal/urlx"
@@ -28,9 +29,10 @@ const (
 )
 
 type Server struct {
-	Config  config.Config
-	Manager *session.Manager
-	Version string
+	Config   config.Config
+	Manager  *session.Manager
+	Version  string
+	Playlist *playlist.Handler
 }
 
 func (s *Server) ServeConn(conn net.Conn) error {
@@ -58,6 +60,18 @@ func (s *Server) ServeConn(conn net.Conn) error {
 			return errors.New("status route requires GET")
 		}
 		return writeStatus(conn, request.version, s.Manager.Snapshots())
+	}
+	if s.Playlist != nil && request.path == s.Playlist.Route() {
+		if request.method != "GET" && request.method != "HEAD" {
+			writeError(conn, request.version, 405, "Method Not Allowed")
+			return errors.New("playlist route requires GET or HEAD")
+		}
+		file, readErr := s.Playlist.Read()
+		if readErr != nil {
+			writeError(conn, request.version, 503, "Service Unavailable")
+			return readErr
+		}
+		return writePlaylist(conn, request.version, request.method, file)
 	}
 	if request.method != "GET" {
 		writeError(conn, request.version, 405, "Method Not Allowed")
@@ -92,6 +106,28 @@ func (s *Server) ServeConn(conn net.Conn) error {
 		version = "dev"
 	}
 	return httpstream.Serve(context.Background(), conn, request.version, "mcastferry/"+version, client, s.Config.ClientWriteTimeout)
+}
+
+func writePlaylist(conn net.Conn, version, method string, file playlist.File) error {
+	header := fmt.Sprintf("%s 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n", version, file.ContentType, len(file.Data))
+	if _, err := io.WriteString(conn, header); err != nil {
+		return err
+	}
+	if method == "HEAD" {
+		return nil
+	}
+	data := file.Data
+	for len(data) > 0 {
+		n, err := conn.Write(data)
+		if err != nil {
+			return err
+		}
+		if n <= 0 {
+			return io.ErrShortWrite
+		}
+		data = data[n:]
+	}
+	return nil
 }
 
 type statusResponse struct {

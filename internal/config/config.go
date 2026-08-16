@@ -54,6 +54,9 @@ type Config struct {
 	SessionIdleGrace     time.Duration
 	LogLevel             string
 	LogFormat            string
+	PlaylistPath         string
+	PlaylistRoute        string
+	PlaylistMaxBytes     int64
 }
 
 func (c Config) Validate() error {
@@ -107,6 +110,9 @@ func (c Config) Validate() error {
 	}
 	if c.LogFormat != "text" && c.LogFormat != "json" {
 		return fmt.Errorf("unsupported log-format %q", c.LogFormat)
+	}
+	if c.PlaylistPath != "" && (c.PlaylistMaxBytes <= 0 || c.PlaylistMaxBytes > 16<<20) {
+		return errors.New("playlist-max-bytes must be between 1 and 16777216")
 	}
 	return nil
 }
@@ -165,6 +171,9 @@ type Options struct {
 	sessionIdleGrace     time.Duration
 	logLevel             string
 	logFormat            string
+	playlistPath         string
+	playlistRoute        string
+	playlistMaxBytes     int64
 }
 
 func BindFlags(fs *flag.FlagSet) *Options {
@@ -183,6 +192,9 @@ func BindFlags(fs *flag.FlagSet) *Options {
 	fs.DurationVar(&o.sessionIdleGrace, "session-idle-grace", DefaultSessionIdleGrace, "delay before closing an unused session")
 	fs.StringVar(&o.logLevel, "log-level", "info", "log level: debug, info, warn, or error")
 	fs.StringVar(&o.logFormat, "log-format", "text", "log format: text or json")
+	fs.StringVar(&o.playlistPath, "playlist-path", "", "optional playlist file to serve")
+	fs.StringVar(&o.playlistRoute, "playlist-route", "/playlist.m3u", "HTTP route for the configured playlist")
+	fs.Int64Var(&o.playlistMaxBytes, "playlist-max-bytes", 2<<20, "maximum playlist file size")
 	return o
 }
 
@@ -219,6 +231,7 @@ func (o *Options) Resolve(lookup InterfaceLookup) (Config, error) {
 		MaxClientsPerSession: o.maxClientsPerSession, MaxClientsPerIP: o.maxClientsPerIP,
 		MaxQueueBytes: o.maxQueueBytes, ClientWriteTimeout: o.clientWriteTimeout,
 		SessionIdleGrace: o.sessionIdleGrace, LogLevel: o.logLevel, LogFormat: o.logFormat,
+		PlaylistPath: o.playlistPath, PlaylistRoute: o.playlistRoute, PlaylistMaxBytes: o.playlistMaxBytes,
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err

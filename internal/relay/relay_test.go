@@ -6,12 +6,16 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/zesuy/mcastferry/internal/config"
+	"github.com/zesuy/mcastferry/internal/playlist"
 	"github.com/zesuy/mcastferry/internal/session"
 )
 
@@ -150,5 +154,40 @@ func TestStatusIsOrdinaryBoundedResponse(t *testing.T) {
 	}
 	if !strings.Contains(string(response), "Content-Type: application/json") || !strings.HasSuffix(string(response), "{\"sessions\":[]}") {
 		t.Fatalf("unexpected status response %q", response)
+	}
+}
+
+func TestPlaylistGETAndHEAD(t *testing.T) {
+	relayServer, _ := testServer(t)
+	path := filepath.Join(t.TempDir(), "iptv.m3u8")
+	content := []byte("#EXTM3U\n#EXTINF:-1,Demo\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := playlist.New(playlist.Config{Path: path, Route: "/playlist.m3u", MaxBytes: 1024})
+	if err != nil {
+		t.Fatal(err)
+	}
+	relayServer.Playlist = handler
+	for _, method := range []string{"GET", "HEAD"} {
+		serverConn, clientConn := connectionPair()
+		done := make(chan error, 1)
+		go func() { done <- relayServer.ServeConn(serverConn) }()
+		_, _ = io.WriteString(clientConn, method+" /playlist.m3u HTTP/1.1\r\nHost: router\r\n\r\n")
+		response, readErr := io.ReadAll(clientConn)
+		_ = clientConn.Close()
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if serveErr := <-done; serveErr != nil {
+			t.Fatal(serveErr)
+		}
+		parts := strings.SplitN(string(response), "\r\n\r\n", 2)
+		if len(parts) != 2 || !strings.Contains(parts[0], "Content-Length: "+strconv.Itoa(len(content))) {
+			t.Fatalf("unexpected %s response %q", method, response)
+		}
+		if method == "GET" && parts[1] != string(content) || method == "HEAD" && parts[1] != "" {
+			t.Fatalf("unexpected %s body %q", method, parts[1])
+		}
 	}
 }
