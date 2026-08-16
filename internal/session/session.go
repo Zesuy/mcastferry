@@ -145,7 +145,6 @@ func (m *Manager) Get(ctx context.Context, key Key) (*Session, error) {
 		}
 		if err == nil {
 			m.sessions[key] = created
-			created.start()
 		}
 		delete(m.pending, key)
 		pending.session, pending.err = created, err
@@ -180,6 +179,7 @@ func (m *Manager) Attach(s *Session, peer netip.Addr, maxQueueBytes, slowThresho
 	s.clients[client] = struct{}{}
 	m.totalClients++
 	m.clientsByIP[peer]++
+	s.start()
 	return client, nil
 }
 
@@ -309,6 +309,7 @@ type Session struct {
 	ctx       context.Context
 	cancel    context.CancelFunc
 	done      chan struct{}
+	startOnce sync.Once
 
 	mu         sync.Mutex
 	clients    map[*Client]struct{}
@@ -329,7 +330,7 @@ func newSession(manager *Manager, key Key, source Source) *Session {
 	}
 }
 
-func (s *Session) start() { go s.readLoop() }
+func (s *Session) start() { s.startOnce.Do(func() { go s.readLoop() }) }
 
 func (s *Session) Key() Key { return s.key }
 

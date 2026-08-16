@@ -139,6 +139,24 @@ func TestFanoutAndIsolation(t *testing.T) {
 	}
 }
 
+func TestFirstPacketWaitsForFirstAttachment(t *testing.T) {
+	source := newFakeSource()
+	m := newTestManager(t, func(Key) (Source, error) { return source, nil }, testLimits(), time.Second)
+	s, err := m.Get(context.Background(), testKey(3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source.packets <- []byte("first")
+	client, err := m.Attach(s, netip.MustParseAddr("192.0.2.1"), 1024, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := readWithTimeout(t, client)
+	if err != nil || string(payload) != "first" {
+		t.Fatalf("first packet payload=%q err=%v", payload, err)
+	}
+}
+
 func TestSlowClientIsRemovedWithoutBlockingFastClient(t *testing.T) {
 	source := newFakeSource()
 	m := newTestManager(t, func(Key) (Source, error) { return source, nil }, testLimits(), time.Second)

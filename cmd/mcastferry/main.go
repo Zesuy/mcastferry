@@ -20,7 +20,7 @@ import (
 	"github.com/zesuy/mcastferry/internal/session"
 )
 
-var version = "dev"
+var version = "0.1.0"
 
 func main() {
 	os.Exit(run(os.Stdout, os.Stderr, os.Args[1:]))

@@ -11,7 +11,7 @@ func TestVersion(t *testing.T) {
 	if code := run(&stdout, &stderr, []string{"-version"}); code != 0 {
 		t.Fatalf("run returned %d: %s", code, stderr.String())
 	}
-	if got := stdout.String(); got != "mcastferry dev\n" {
+	if got := stdout.String(); got != "mcastferry 0.1.0\n" {
 		t.Fatalf("unexpected version output %q", got)
 	}
 }
