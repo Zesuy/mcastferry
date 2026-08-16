@@ -1,0 +1,14 @@
+{
+  "admin/services/mcastferry": {
+    "title": "McastFerry",
+    "order": 70,
+    "action": {
+      "type": "view",
+      "path": "mcastferry/settings"
+    },
+    "depends": {
+      "acl": [ "luci-app-mcastferry" ],
+      "uci": { "mcastferry": true }
+    }
+  }
+}

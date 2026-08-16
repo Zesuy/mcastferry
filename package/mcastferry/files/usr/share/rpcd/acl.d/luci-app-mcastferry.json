@@ -1,0 +1,20 @@
+{
+  "luci-app-mcastferry": {
+    "description": "Grant access to McastFerry configuration and playlist upload",
+    "read": {
+      "ubus": {
+        "mcastferry": [ "status" ]
+      },
+      "uci": [ "mcastferry" ]
+    },
+    "write": {
+      "ubus": {
+        "mcastferry": [ "install_playlist" ]
+      },
+      "uci": [ "mcastferry" ],
+      "file": {
+        "/tmp/mcastferry-playlist.upload": [ "write" ]
+      }
+    }
+  }
+}

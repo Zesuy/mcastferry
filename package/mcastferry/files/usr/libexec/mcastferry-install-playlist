@@ -1,0 +1,28 @@
+#!/bin/sh
+
+set -eu
+
+source_file=/tmp/mcastferry-playlist.upload
+target_file=/www/iptv.m3u8
+max_bytes=2097152
+
+[ -f "$source_file" ] && [ ! -L "$source_file" ] || {
+	echo "uploaded playlist is missing or is not a regular file" >&2
+	exit 1
+}
+
+size="$(wc -c < "$source_file")"
+[ "$size" -le "$max_bytes" ] || {
+	echo "uploaded playlist exceeds $max_bytes bytes" >&2
+	exit 1
+}
+
+temporary="$(mktemp /www/.iptv.m3u8.XXXXXX)"
+trap 'rm -f "$temporary"' EXIT
+cp "$source_file" "$temporary"
+chmod 0644 "$temporary"
+mv -f "$temporary" "$target_file"
+rm -f "$source_file"
+trap - EXIT
+
+echo "$target_file"
